@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>中醫教學 3D 小遊戲：真人實拍與 3D 解剖雙向連動定位系統</title>
+  
+  <!-- Three.js r128 與 OrbitControls -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Microsoft JhengHei", sans-serif;
+      background-color: #0d1117;
+      color: #e6edf3;
+    }
+    
+    #app-container {
+      display: flex;
+      flex-direction: column;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* 頂部 HUD 標題與任務列 */
+    header {
+      height: 54px;
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 10;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    }
+
+    .header-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header-title h1 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #58a6ff;
+    }
+    .header-title .tag {
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #8b949e;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 12px;
+    }
+
+    .task-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #0d1117;
+      padding: 4px 16px;
+      border-radius: 20px;
+      border: 1px solid #30363d;
+    }
+    .task-badge {
+      background: #d29922;
+      color: #000;
+      font-weight: bold;
+      font-size: 12px;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    .task-text {
+      font-size: 13px;
+      color: #f0f6fc;
+    }
+
+    .author-info {
+      font-size: 12px;
+      color: #8b949e;
+    }
+
+    /* 主雙畫面分割區域 */
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: row;
+      position: relative;
+      overflow: hidden;
+    }
+
+    @media (max-width: 768px) {
+      main {
+        flex-direction: column;
+      }
+    }
+
+    /* 2D & 3D 視窗容器 */
+    .viewport {
+      flex: 1;
+      position: relative;
+      background: #090d11;
+      overflow: hidden;
+      border-right: 1px solid #21262d;
+    }
+    .viewport:last-child {
+      border-right: none;
+    }
+
+    .view-header {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 5;
+      pointer-events: none;
+    }
+    .view-header * {
+      pointer-events: auto;
+    }
+
+    .view-title {
+      background: rgba(22, 27, 34, 0.85);
+      backdrop-filter: blur(8px);
+      padding: 4px 12px;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      font-size: 12px;
+      font-weight: bold;
+      color: #c9d1d9;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 6px;
+    }
+    .btn {
+      background: rgba(33, 38, 44, 0.85);
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      padding: 4px 10px;
+      font-size: 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .btn:hover {
+      background: #30363d;
+      color: #58a6ff;
+      border-color: #58a6ff;
+    }
+
+    /* 2D Canvas 畫布區域 */
+    #canvas2d-container {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #canvas2d {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* 手臂解剖對照圖 Modal / Overlays */
+    .ref-overlay {
+      position: absolute;
+      bottom: 12px;
+      width: 160px;
+      height: 220px;
+      background: rgba(22, 27, 34, 0.9);
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      z-index: 6;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    #bone-ref-overlay {
+      left: 12px;
+    }
+    #muscle-ref-overlay {
+      left: 180px;
+    }
+
+    .ref-header {
+      font-size: 11px;
+      background: #21262d;
+      padding: 4px 8px;
+      color: #8b949e;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .ref-body {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0d1117;
+      position: relative;
+      padding: 4px;
+    }
+    .ref-body img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+
+    /* 2D HTML 熱區點 */
+    .hotspot-2d {
+      position: absolute;
+      width: 22px;
+      height: 22px;
+      margin-left: -11px;
+      margin-top: -11px;
+      border-radius: 50%;
+      border: 2px solid #58a6ff;
+      background: rgba(88, 166, 255, 0.3);
+      cursor: pointer;
+      z-index: 4;
+      transition: transform 0.2s, background 0.2s, border-color 0.2s;
+    }
+    .hotspot-2d:hover, .hotspot-2d.active {
+      transform: scale(1.4);
+      background: rgba(255, 209, 102, 0.6);
+      border-color: #ffd166;
+      box-shadow: 0 0 12px #ffd166;
+    }
+    .hotspot-label {
+      position: absolute;
+      left: 26px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(22, 27, 34, 0.9);
+      color: #f0f6fc;
+      border: 1px solid #30363d;
+      padding: 2px 8px;
+      font-size: 11px;
+      border-radius: 4px;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    /* 3D Viewport */
+    #webgl-container {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* 底部 HUD 狀態說明欄 */
+    footer {
+      height: 60px;
+      background: #161b22;
+      border-top: 1px solid #30363d;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 16px;
+      z-index: 10;
+    }
+    .status-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: #21262d;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      color: #58a6ff;
+      border: 1px solid #30363d;
+    }
+    .status-content {
+      flex: 1;
+    }
+    .status-name {
+      font-size: 14px;
+      font-weight: bold;
+      color: #ffd166;
+      margin-bottom: 2px;
+    }
+    .status-desc {
+      font-size: 12px;
+      color: #8b949e;
+    }
+
+    /* Modal 對話框 */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    .modal-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .modal-card {
+      width: 480px;
+      max-width: 90vw;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      transform: translateY(20px);
+      transition: transform 0.3s ease;
+    }
+    .modal-overlay.active .modal-card {
+      transform: translateY(0);
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #21262d;
+      padding-bottom: 10px;
+      margin-bottom: 14px;
+    }
+    .modal-title {
+      font-size: 18px;
+      font-weight: bold;
+      color: #58a6ff;
+    }
+    .modal-close {
+      background: none;
+      border: none;
+      color: #8b949e;
+      font-size: 20px;
+      cursor: pointer;
+    }
+    .modal-section {
+      margin-bottom: 12px;
+    }
+    .modal-section-title {
+      font-size: 12px;
+      color: #ffd166;
+      font-weight: bold;
+      margin-bottom: 4px;
+    }
+    .modal-section-text {
+      font-size: 13px;
+      color: #c9d1d9;
+      line-height: 1.5;
+    }
+    .modal-footer {
+      text-align: right;
+      margin-top: 16px;
+    }
+
+    /* 凡例說明圖標 */
+    .legend-bar {
+      position: absolute;
+      bottom: 12px;
+      right: 12px;
+      background: rgba(22, 27, 34, 0.85);
+      border: 1px solid #30363d;
+      padding: 4px 10px;
+      border-radius: 6px;
+      display: flex;
+      gap: 12px;
+      font-size: 11px;
+      color: #8b949e;
+      z-index: 5;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .legend-color {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+  </style>
+</head>
+<body>
+
+<div id="app-container">
+  <!-- 頂部 HUD 狀態與任務導覽欄 -->
+  <header>
+    <div class="header-title">
+      <h1>真人實拍與 3D 解剖雙向連動定位系統</h1>
+      <span class="tag">雙向 Synchronized Hover 穴位定位教學</span>
+    </div>
+
+    <div class="task-bar">
+      <span class="task-badge">當前任務</span>
+      <span id="task-text" class="task-text">任務：請在左側 2D 照片或右側 3D 模型中，找出「尺澤穴」</span>
+      <button class="btn" id="next-task-btn" style="margin-left: 8px;">下一題 &rarr;</button>
+    </div>
+
+    <div class="author-info">
+      作者：Jhen | 版本 v1.003
+    </div>
+  </header>
+
+  <!-- Split Screen 左右分屏畫面 -->
+  <main>
+    <!-- 左側：2D 真人體表對照區 -->
+    <div class="viewport" id="viewport-2d">
+      <div class="view-header">
+        <div class="view-title">📷 2D 真人體表對照區</div>
+        <div class="btn-group">
+          <button class="btn" id="toggle-ref-btn">📷 隱藏解剖層</button>
+          <button class="btn" id="toggle-skin-mode">📷 模式：真人膚質</button>
+        </div>
+      </div>
+
+      <div id="canvas2d-container">
+        <canvas id="canvas2d"></canvas>
+        <div id="hotspots-layer"></div>
+      </div>
+
+      <!-- 手臂骨骼解剖圖對照視窗 (bone.png) -->
+      <div id="bone-ref-overlay" class="ref-overlay">
+        <div class="ref-header">
+          <span>🦴 骨骼解剖圖</span>
+          <span style="font-size: 9px; color: #2ea043;">bone.png</span>
+        </div>
+        <div class="ref-body">
+          <img src="bone.png" alt="手臂骨骼解剖圖">
+        </div>
+      </div>
+
+      <!-- 手臂肌肉解剖圖對照視窗 (muscle.png) -->
+      <div id="muscle-ref-overlay" class="ref-overlay">
+        <div class="ref-header">
+          <span>💪 肌肉解剖圖</span>
+          <span style="font-size: 9px; color: #2ea043;">muscle.png</span>
+        </div>
+        <div class="ref-body">
+          <img src="muscle.png" alt="手臂肌肉解剖圖">
+        </div>
+      </div>
+
+      <div class="legend-bar">
+        <div class="legend-item"><div class="legend-color" style="background: #ffd166;"></div> 穴位點</div>
+        <div class="legend-item"><div class="legend-color" style="background: #58a6ff;"></div> 骨突/解剖標記</div>
+        <div class="legend-item"><div class="legend-color" style="background: #ff7b72;"></div> 經絡線</div>
+      </div>
+    </div>
+
+    <!-- 右側：3D 可互動模型區 -->
+    <div class="viewport" id="viewport-3d">
+      <div class="view-header">
+        <div class="view-title">🧊 3D 解剖互動模型區</div>
+        <div class="btn-group">
+          <button class="btn" id="reset-cam-btn">🔄 重置視角</button>
+        </div>
+      </div>
+
+      <div id="webgl-container"></div>
+
+      <div class="legend-bar" style="bottom: 12px; left: 12px; right: auto;">
+        <span>🖱️ 拖曳旋轉 | 滾輪縮放 | 右鍵平移</span>
+      </div>
+    </div>
+  </main>
+
+  <!-- 底部 HUD 狀態說明欄 -->
+  <footer>
+    <div class="status-icon">📍</div>
+    <div class="status-content">
+      <div id="status-name" class="status-name">請懸停或點擊目標</div>
+      <div id="status-desc" class="status-desc">移至 2D 體表或 3D 解剖模型上的穴位/骨突上，即可查看自動雙向對照與尋穴密碼。</div>
+    </div>
+    <button class="btn" id="check-ans-btn" style="background: #238636; border-color: #2ea043; color: white; padding: 8px 16px; font-weight: bold;">驗證定位</button>
+  </footer>
+</div>
+
+<!-- 雙向對照學習卡彈窗 -->
+<div class="modal-overlay" id="learn-modal">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">尺澤穴 (LU5)</div>
+      <button class="modal-close" id="modal-close-btn">&times;</button>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">【真人體表觸診手法】</div>
+      <div class="modal-section-text" id="modal-skin-text">微屈肘關節，於肘橫紋上，肱二頭肌腱尺側緣凹陷處取穴。</div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">【3D 解剖深層組織結構】</div>
+      <div class="modal-section-text" id="modal-anatomy-text">深層包含肱橈肌與肱肌，有頭靜脈、貴要靜脈與正中神經通過。</div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">【取穴口訣】</div>
+      <div class="modal-section-text" id="modal-formula-text">肘橫紋中肱二腱，外側肌腱是尺澤。</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="modal-ok-btn" style="background: #1f6feb; border-color: #388bfd; color: white;">繼續學習</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // === 解剖結構與穴位資料庫 ===
+  const ANATOMY_DATA = {
+    chize: {
+      id: 'chize',
+      name: '尺澤穴 (LU5)',
+      type: 'acupoint',
+      pos2D: { x: 0.48, y: 0.38 },
+      pos3D: { x: -0.25, y: 0.6, z: 0.28 },
+      camPos: { x: -1.5, y: 1.2, z: 2.2 },
+      skinText: '微屈肘關節（約120度），在肘橫紋上，肱二頭肌腱之尺側/外側緣凹陷中取穴。',
+      anatomyText: '位於肱二頭肌腱外側，深層為肱肌；布有前臂外側皮神經及橈神經主幹。',
+      formula: '肘橫紋中找肌腱，肌腱外側即尺澤。'
+    },
+    neiguan: {
+      id: 'neiguan',
+      name: '內關穴 (PC6)',
+      type: 'acupoint',
+      pos2D: { x: 0.61, y: 0.66 },
+      pos3D: { x: -0.05, y: -0.9, z: 0.30 },
+      camPos: { x: -0.8, y: -0.5, z: 2.0 },
+      skinText: '前臂掌側，當腕掌側遠端橫紋上 2 寸，橈側腕屈肌腱與掌長肌腱之間。',
+      anatomyText: '深層為指淺屈肌、指深屈肌；有前臂正中靜脈、骨間前動靜脈；布有前臂內側皮神經、正中神經掌皮支及深層的骨間前神經。',
+      formula: '腕橫紋上量二寸，兩腱中間是內關。'
+    },
+    quchi: {
+      id: 'quchi',
+      name: '曲池穴 (LI11)',
+      type: 'acupoint',
+      pos2D: { x: 0.38, y: 0.39 },
+      pos3D: { x: -0.38, y: 0.6, z: 0.15 },
+      camPos: { x: -1.8, y: 1.0, z: 1.8 },
+      skinText: '屈肘成直角，於肘橫紋外側端，肱骨外上髁連線中點（肘橫紋盡頭處）。',
+      anatomyText: '位於橈側腕長伸肌腱內側，肱橈肌起始部；有橈返動靜脈分支；布有前臂背側皮神經、內側為橈神經本幹。',
+      formula: '屈肘成角找橫紋，盡頭骨邊即曲池。'
+    },
+    taiyuan: {
+      id: 'taiyuan',
+      name: '太淵穴 (LU9)',
+      type: 'acupoint',
+      pos2D: { x: 0.68, y: 0.76 },
+      pos3D: { x: -0.15, y: -1.4, z: 0.32 },
+      camPos: { x: -1.2, y: -0.8, z: 2.0 },
+      skinText: '掌心向上，於腕掌側橫紋橈側段，橈動脈搏動處取穴。',
+      anatomyText: '在橈側腕屈肌腱與拇長展肌腱之間，深層為橈動脈與橈神經淺支。',
+      formula: '腕橫紋上橈動脈，脈搏應手太淵穴。'
+    },
+    hegu: {
+      id: 'hegu',
+      name: '合谷穴 (LI4)',
+      type: 'acupoint',
+      pos2D: { x: 0.78, y: 0.84 },
+      pos3D: { x: 0.35, y: -1.8, z: 0.25 },
+      camPos: { x: 0.8, y: -1.2, z: 1.8 },
+      skinText: '在手背，第1、2掌骨間，當第二掌骨橈側的中點處。簡易取法：以另一手拇指指橫紋放在虎口上取穴。',
+      anatomyText: '在第一骨間背側肌中，深層有橈動脈穿過，布有手背靜脈網與橈神經淺支。',
+      formula: '虎口豎起併食指，肌肉隆起最高點。'
+    },
+    zhouhengwen: {
+      id: 'zhouhengwen',
+      name: '肘橫紋',
+      type: 'landmark',
+      pos2D: { x: 0.46, y: 0.40 },
+      pos3D: { x: 0.0, y: 0.6, z: 0.1 },
+      camPos: { x: 0, y: 1.0, z: 2.8 },
+      skinText: '肘窩處的橫向皮膚皺摺，為手臂上肢體表定位的重要橫向基準線。',
+      anatomyText: '對應肘關節前方的滑膜褶皺與屈肘肌群前緣交界。',
+      formula: '上肢屈曲肘紋現，尋穴定位第一線。'
+    },
+    wanhengwen: {
+      id: 'wanhengwen',
+      name: '腕橫紋',
+      type: 'landmark',
+      pos2D: { x: 0.67, y: 0.74 },
+      pos3D: { x: 0.0, y: -1.4, z: 0.15 },
+      camPos: { x: 0, y: -1.0, z: 2.2 },
+      skinText: '手腕掌側近端的橫向皮膚摺痕，分為遠端與近端腕橫紋。',
+      anatomyText: '對應屈肌支持帶（腕橫韌帶）的上緣位置。',
+      formula: '掌腕交界橫紋明顯，寸口診脈定位基準。'
+    },
+    gongertouji: {
+      id: 'gongertouji',
+      name: '肱二頭肌腱',
+      type: 'landmark',
+      pos2D: { x: 0.44, y: 0.35 },
+      pos3D: { x: -0.1, y: 0.8, z: 0.3 },
+      camPos: { x: -0.8, y: 1.2, z: 2.2 },
+      skinText: '用力屈肘時，肘窩中央可觸及一條硬實的條索狀肌腱。',
+      anatomyText: '肱二頭肌遠端止點肌腱，止於橈骨粗隆。',
+      formula: '屈肘緊張呈條索，分割尺澤與曲澤。'
+    }
+  };
+
+  // 教學題庫與偏離提示
+  const TASKS = [
+    {
+      target: 'chize',
+      prompt: '任務：請在左側 2D 照片或右側 3D 模型中，找出「尺澤穴」',
+      wrongHint: '請對照左側肘橫紋外側的肱二頭肌腱位置。'
+    },
+    {
+      target: 'neiguan',
+      prompt: '任務：請在左側 2D 照片或右側 3D 模型中，找出「內關穴」',
+      wrongHint: '請對照左側腕橫紋上方約兩指寬，並尋找兩條明顯肌腱（掌長肌腱與橈側腕屈肌腱）的中間縫隙。'
+    },
+    {
+      target: 'quchi',
+      prompt: '任務：請在左側 2D 照片或右側 3D 模型中，找出「曲池穴」',
+      wrongHint: '請將肘關節屈曲，順著肘橫紋往外側（拇指側）滑動至橫紋結束的凹陷處。'
+    },
+    {
+      target: 'taiyuan',
+      prompt: '任務：請定位手太陰肺經的原穴「太淵穴」',
+      wrongHint: '請對照手腕掌側橫紋橈側端（靠近拇指側），尋找橈動脈脈搏處。'
+    },
+    {
+      target: 'hegu',
+      prompt: '任務：請定位虎口附近的「合谷穴」',
+      wrongHint: '請在手背第一與第二掌骨之間，靠第二掌骨側尋找最高隆起點。'
+    },
+    {
+      target: 'zhouhengwen',
+      prompt: '任務：請指認上肢屈側定位基準線「肘橫紋」',
+      wrongHint: '請尋找肘關節屈曲時肘窩出現的橫向皮膚皺摺。'
+    },
+    {
+      target: 'wanhengwen',
+      prompt: '任務：請指認手腕掌側的「腕橫紋」',
+      wrongHint: '請尋找手腕掌側交界處最明顯的橫向皮膚摺痕。'
+    }
+  ];
+
+  let currentTaskIdx = 0;
+  let activeHoverId = null;
+  let isSkinMode = true;
+  let showAnatomyOverlay = true;
+
+  // === 初始化 Canvas 2D ===
+  const canvas2D = document.getElementById('canvas2d');
+  const ctx2D = canvas2D.getContext('2d');
+  const hotspotsLayer = document.getElementById('hotspots-layer');
+
+  function resizeCanvas2D() {
+    const container = document.getElementById('canvas2d-container');
+    canvas2D.width = container.clientWidth;
+    canvas2D.height = container.clientHeight;
+    draw2DArm();
+    updateHotspotPositions();
+  }
+
+  // 繪製 2D 擬真手臂與解剖線條
+  function draw2DArm() {
+    const w = canvas2D.width;
+    const h = canvas2D.height;
+    ctx2D.clearRect(0, 0, w, h);
+
+    // 背景格線
+    ctx2D.strokeStyle = '#161b22';
+    ctx2D.lineWidth = 1;
+    for(let x=0; x<w; x+=30) {
+      ctx2D.beginPath(); ctx2D.moveTo(x, 0); ctx2D.lineTo(x, h); ctx2D.stroke();
+    }
+    for(let y=0; y<h; y+=30) {
+      ctx2D.beginPath(); ctx2D.moveTo(0, y); ctx2D.lineTo(w, y); ctx2D.stroke();
+    }
+
+    // 繪製手臂基底輪廓
+    ctx2D.save();
+    ctx2D.beginPath();
+    ctx2D.moveTo(w * 0.15, h * 0.15);
+    ctx2D.quadraticCurveTo(w * 0.35, h * 0.25, w * 0.42, h * 0.38);
+    ctx2D.quadraticCurveTo(w * 0.55, h * 0.58, w * 0.65, h * 0.74);
+    ctx2D.lineTo(w * 0.85, h * 0.88);
+    ctx2D.lineTo(w * 0.78, h * 0.92);
+    ctx2D.lineTo(w * 0.58, h * 0.78);
+    ctx2D.quadraticCurveTo(w * 0.45, h * 0.55, w * 0.32, h * 0.42);
+    ctx2D.lineTo(w * 0.08, h * 0.22);
+    ctx2D.closePath();
+
+    if (isSkinMode) {
+      const grad = ctx2D.createLinearGradient(w*0.2, h*0.2, w*0.7, h*0.8);
+      grad.addColorStop(0, '#e8b89d');
+      grad.addColorStop(0.5, '#d49a7a');
+      grad.addColorStop(1, '#c08263');
+      ctx2D.fillStyle = grad;
+      ctx2D.fill();
+
+      ctx2D.shadowColor = 'rgba(0,0,0,0.4)';
+      ctx2D.shadowBlur = 15;
+      ctx2D.strokeStyle = '#a6684a';
+      ctx2D.lineWidth = 3;
+      ctx2D.stroke();
+    } else {
+      ctx2D.fillStyle = 'rgba(88, 166, 255, 0.08)';
+      ctx2D.fill();
+      ctx2D.strokeStyle = '#58a6ff';
+      ctx2D.lineWidth = 2;
+      ctx2D.setLineDash([4, 4]);
+      ctx2D.stroke();
+      ctx2D.setLineDash([]);
+    }
+    ctx2D.restore();
+
+    // 繪製褶痕與細節
+    ctx2D.strokeStyle = isSkinMode ? 'rgba(100, 50, 30, 0.5)' : '#58a6ff';
+    ctx2D.lineWidth = 2;
+    
+    // 肘橫紋線
+    ctx2D.beginPath();
+    ctx2D.moveTo(w * 0.38, h * 0.39);
+    ctx2D.quadraticCurveTo(w * 0.45, h * 0.41, w * 0.50, h * 0.37);
+    ctx2D.stroke();
+
+    // 腕橫紋線
+    ctx2D.beginPath();
+    ctx2D.moveTo(w * 0.62, h * 0.73);
+    ctx2D.quadraticCurveTo(w * 0.67, h * 0.76, w * 0.71, h * 0.73);
+    ctx2D.stroke();
+
+    // 肱二頭肌腱細節
+    ctx2D.strokeStyle = isSkinMode ? 'rgba(230, 210, 190, 0.8)' : '#ffd166';
+    ctx2D.lineWidth = 4;
+    ctx2D.beginPath();
+    ctx2D.moveTo(w * 0.40, h * 0.30);
+    ctx2D.lineTo(w * 0.45, h * 0.38);
+    ctx2D.stroke();
+
+    // 手太陰肺經與手厥陰心包經發光線
+    ctx2D.strokeStyle = '#ff7b72';
+    ctx2D.lineWidth = 2.5;
+    ctx2D.shadowColor = '#ff7b72';
+    ctx2D.shadowBlur = 8;
+    ctx2D.beginPath();
+    ctx2D.moveTo(w * 0.32, h * 0.20);
+    ctx2D.lineTo(w * 0.48, h * 0.38);
+    ctx2D.lineTo(w * 0.68, h * 0.76);
+    ctx2D.stroke();
+    ctx2D.shadowBlur = 0;
+  }
+
+  // 建立 2D HTML 熱區標籤
+  function setup2DHotspots() {
+    hotspotsLayer.innerHTML = '';
+    Object.keys(ANATOMY_DATA).forEach(key => {
+      const item = ANATOMY_DATA[key];
+      const elem = document.createElement('div');
+      elem.className = 'hotspot-2d';
+      elem.id = `hotspot-${key}`;
+
+      const label = document.createElement('div');
+      label.className = 'hotspot-label';
+      label.innerText = item.name;
+      elem.appendChild(label);
+
+      elem.addEventListener('mouseenter', () => onHoverItem(key, '2d'));
+      elem.addEventListener('mouseleave', () => onHoverItem(null, '2d'));
+      elem.addEventListener('click', () => onClickItem(key));
+
+      hotspotsLayer.appendChild(elem);
+    });
+    updateHotspotPositions();
+  }
+
+  function updateHotspotPositions() {
+    const w = canvas2D.width;
+    const h = canvas2D.height;
+    Object.keys(ANATOMY_DATA).forEach(key => {
+      const item = ANATOMY_DATA[key];
+      const elem = document.getElementById(`hotspot-${key}`);
+      if (elem) {
+        elem.style.left = `${item.pos2D.x * w}px`;
+        elem.style.top = `${item.pos2D.y * h}px`;
+      }
+    });
+  }
+
+  // === 初始化 Three.js 3D 場景 ===
+  let scene, camera, renderer, controls;
+  const interactive3DObjects = [];
+  let raycaster, mouse;
+  let targetCamPos = null;
+
+  function init3D() {
+    const container = document.getElementById('webgl-container');
+    const width = container.clientWidth || 400;
+    const height = container.clientHeight || 400;
+
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x090d11);
+
+    camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
+    camera.position.set(0, 0, 3.5);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(width, height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    container.appendChild(renderer.domElement);
+
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+
+    // 光源設置
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    scene.add(ambientLight);
+
+    const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight1.position.set(5, 10, 7);
+    scene.add(dirLight1);
+
+    const dirLight2 = new THREE.DirectionalLight(0x58a6ff, 0.4);
+    dirLight2.position.set(-5, -5, -5);
+    scene.add(dirLight2);
+
+    create3DArmModel();
+
+    raycaster = new THREE.Raycaster();
+    mouse = new THREE.Vector2();
+
+    renderer.domElement.addEventListener('mousemove', on3DMouseMove);
+    renderer.domElement.addEventListener('click', on3DClick);
+
+    window.addEventListener('resize', onWindowResize);
+    animate();
+  }
+
+  function create3DArmModel() {
+    const armGroup = new THREE.Group();
+
+    // 1. 骨骼
+    const boneMat = new THREE.MeshStandardMaterial({ color: 0xe6edf3, roughness: 0.3, metalness: 0.1 });
+    const humerusGeo = new THREE.CylinderGeometry(0.12, 0.1, 1.2, 16);
+    const humerus = new THREE.Mesh(humerusGeo, boneMat);
+    humerus.position.set(0, 1.2, 0);
+    armGroup.add(humerus);
+
+    const radiusGeo = new THREE.CylinderGeometry(0.06, 0.05, 1.3, 16);
+    const radiusMesh = new THREE.Mesh(radiusGeo, boneMat);
+    radiusMesh.position.set(-0.1, -0.2, 0);
+    armGroup.add(radiusMesh);
+
+    const ulnaGeo = new THREE.CylinderGeometry(0.06, 0.04, 1.3, 16);
+    const ulnaMesh = new THREE.Mesh(ulnaGeo, boneMat);
+    ulnaMesh.position.set(0.1, -0.2, 0);
+    armGroup.add(ulnaMesh);
+
+    // 2. 肌肉層
+    const muscleMat = new THREE.MeshStandardMaterial({
+      color: 0xc05646,
+      transparent: true,
+      opacity: 0.45,
+      roughness: 0.6
+    });
+    const bicepGeo = new THREE.CylinderGeometry(0.28, 0.22, 1.1, 16);
+    const bicep = new THREE.Mesh(bicepGeo, muscleMat);
+    bicep.position.set(0, 1.1, 0.05);
+    armGroup.add(bicep);
+
+    const forearmGeo = new THREE.CylinderGeometry(0.23, 0.14, 1.3, 16);
+    const forearm = new THREE.Mesh(forearmGeo, muscleMat);
+    forearm.position.set(0, -0.2, 0.02);
+    armGroup.add(forearm);
+
+    // 3. 經絡線
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-0.2, 1.5, 0.25),
+      new THREE.Vector3(-0.25, 0.6, 0.28),
+      new THREE.Vector3(-0.2, -0.4, 0.26),
+      new THREE.Vector3(-0.15, -1.4, 0.32)
+    ]);
+    const points = curve.getPoints(50);
+    const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+    const lineMat = new THREE.LineBasicMaterial({ color: 0xff7b72, linewidth: 3 });
+    const meridianLine = new THREE.Line(lineGeo, lineMat);
+    armGroup.add(meridianLine);
+
+    // 4. 穴位與標記點
+    Object.keys(ANATOMY_DATA).forEach(key => {
+      const item = ANATOMY_DATA[key];
+      const isAcupoint = item.type === 'acupoint';
+      
+      const pGeo = new THREE.SphereGeometry(isAcupoint ? 0.06 : 0.05, 16, 16);
+      const pMat = new THREE.MeshStandardMaterial({
+        color: isAcupoint ? 0xffd166 : 0x58a6ff,
+        emissive: isAcupoint ? 0xffa500 : 0x0055ff,
+        emissiveIntensity: 0.5,
+        roughness: 0.2
+      });
+
+      const mesh = new THREE.Mesh(pGeo, pMat);
+      mesh.position.set(item.pos3D.x, item.pos3D.y, item.pos3D.z);
+      mesh.userData = { id: key, data: item };
+
+      const ringGeo = new THREE.RingGeometry(0.08, 0.11, 24);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd166, side: THREE.DoubleSide, transparent: true, opacity: 0 });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.name = 'highlightRing';
+      mesh.add(ring);
+
+      armGroup.add(mesh);
+      interactive3DObjects.push(mesh);
+    });
+
+    scene.add(armGroup);
+  }
+
+  function on3DMouseMove(event) {
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(interactive3DObjects);
+
+    if (intersects.length > 0) {
+      const hoveredObj = intersects[0].object;
+      onHoverItem(hoveredObj.userData.id, '3d');
+    } else {
+      if (activeHoverId && activeHoverSource === '3d') {
+        onHoverItem(null, '3d');
+      }
+    }
+  }
+
+  function on3DClick() {
+    if (activeHoverId) {
+      onClickItem(activeHoverId);
+    }
+  }
+
+  let activeHoverSource = null;
+
+  function onHoverItem(id, source) {
+    activeHoverId = id;
+    activeHoverSource = source;
+
+    document.querySelectorAll('.hotspot-2d').forEach(el => el.classList.remove('active'));
+    interactive3DObjects.forEach(obj => {
+      obj.material.emissiveIntensity = 0.5;
+      const ring = obj.getObjectByName('highlightRing');
+      if(ring) ring.material.opacity = 0;
+    });
+
+    if (!id) {
+      document.getElementById('status-name').innerText = '請懸停或點擊目標';
+      document.getElementById('status-desc').innerText = '移至 2D 體表或 3D 解剖模型上的穴位/骨突上，即可查看自動雙向對照與尋穴密碼。';
+      return;
+    }
+
+    const item = ANATOMY_DATA[id];
+
+    const elem2d = document.getElementById(`hotspot-${id}`);
+    if (elem2d) elem2d.classList.add('active');
+
+    const obj3d = interactive3DObjects.find(o => o.userData.id === id);
+    if (obj3d) {
+      obj3d.material.emissiveIntensity = 1.2;
+      const ring = obj3d.getObjectByName('highlightRing');
+      if (ring) ring.material.opacity = 0.8;
+
+      if (source === '2d' && item.camPos) {
+        targetCamPos = new THREE.Vector3(item.camPos.x, item.camPos.y, item.camPos.z);
+      }
+    }
+
+    document.getElementById('status-name').innerText = item.name;
+    document.getElementById('status-desc').innerText = `【尋穴口訣】${item.formula}`;
+  }
+
+  function onClickItem(id) {
+    const item = ANATOMY_DATA[id];
+    if (!item) return;
+
+    document.getElementById('modal-title').innerText = item.name;
+    document.getElementById('modal-skin-text').innerText = item.skinText;
+    document.getElementById('modal-anatomy-text').innerText = item.anatomyText;
+    document.getElementById('modal-formula-text').innerText = item.formula;
+
+    document.getElementById('learn-modal').classList.add('active');
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+
+    if (targetCamPos) {
+      camera.position.lerp(targetCamPos, 0.05);
+      controls.update();
+      if (camera.position.distanceTo(targetCamPos) < 0.01) {
+        targetCamPos = null;
+      }
+    } else {
+      controls.update();
+    }
+
+    renderer.render(scene, camera);
+  }
+
+  function onWindowResize() {
+    resizeCanvas2D();
+    const container = document.getElementById('webgl-container');
+    if (container) {
+      camera.aspect = container.clientWidth / container.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, container.clientHeight);
+    }
+  }
+
+  function updateTaskDisplay() {
+    const task = TASKS[currentTaskIdx];
+    document.getElementById('task-text').innerText = task.prompt;
+  }
+
+  document.getElementById('check-ans-btn').addEventListener('click', () => {
+    const task = TASKS[currentTaskIdx];
+    if (activeHoverId === task.target) {
+      alert(`🎉 答對了！您成功定位：${ANATOMY_DATA[task.target].name}`);
+      onClickItem(activeHoverId);
+    } else {
+      alert(`❌ 定位偏離！\n\n提示：${task.wrongHint}`);
+    }
+  });
+
+  document.getElementById('next-task-btn').addEventListener('click', () => {
+    currentTaskIdx = (currentTaskIdx + 1) % TASKS.length;
+    updateTaskDisplay();
+  });
+
+  document.getElementById('toggle-skin-mode').addEventListener('click', () => {
+    isSkinMode = !isSkinMode;
+    document.getElementById('toggle-skin-mode').innerText = isSkinMode ? '📷 模式：真人膚質' : '📷 模式：2D 解剖線條';
+    draw2DArm();
+  });
+
+  document.getElementById('toggle-ref-btn').addEventListener('click', () => {
+    showAnatomyOverlay = !showAnatomyOverlay;
+    document.getElementById('bone-ref-overlay').style.display = showAnatomyOverlay ? 'flex' : 'none';
+    document.getElementById('muscle-ref-overlay').style.display = showAnatomyOverlay ? 'flex' : 'none';
+    document.getElementById('toggle-ref-btn').innerText = showAnatomyOverlay ? '📷 隱藏解剖層' : '📷 顯示解剖層';
+  });
+
+  document.getElementById('reset-cam-btn').addEventListener('click', () => {
+    targetCamPos = new THREE.Vector3(0, 0, 3.5);
+    controls.reset();
+  });
+
+  document.getElementById('modal-close-btn').addEventListener('click', () => {
+    document.getElementById('learn-modal').classList.remove('active');
+  });
+  document.getElementById('modal-ok-btn').addEventListener('click', () => {
+    document.getElementById('learn-modal').classList.remove('active');
+  });
+
+  window.addEventListener('DOMContentLoaded', () => {
+    resizeCanvas2D();
+    setup2DHotspots();
+    init3D();
+    updateTaskDisplay();
+  });
+</script>
+</body>
+</html>
